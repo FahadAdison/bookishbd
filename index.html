@@ -485,25 +485,26 @@ textarea{resize:vertical;min-height:65px}
 <script>
 const API='https://script.google.com/macros/s/AKfycbzis2AzIxLkvVa5mIr1D5Q7YBXtIUjEoDYh1CNLvr_KaXToORZDgVgAgI1Ny8e8l7EM/exec';
 
-// ── API via script injection (CORS-free) ──
+// ── JSONP API ──
 function gasCall(params) {
   return new Promise((resolve) => {
-    const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    window[cbName] = function(data) {
-      delete window[cbName];
-      document.getElementById(cbName)?.remove();
+    const cb = 'cb' + Date.now() + Math.floor(Math.random()*9999);
+    window[cb] = (data) => {
+      delete window[cb];
+      const el = document.getElementById(cb);
+      if(el) el.remove();
       resolve(data);
     };
     const url = new URL(API);
     Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, String(v)));
-    url.searchParams.set('callback', cbName);
+    url.searchParams.set('callback', cb);
     url.searchParams.set('t', Date.now());
     const s = document.createElement('script');
-    s.id = cbName;
+    s.id = cb;
     s.src = url.toString();
-    s.onerror = () => { delete window[cbName]; s.remove(); resolve({error:'network'}); };
+    s.onerror = () => { delete window[cb]; s.remove(); resolve({error:'fail'}); };
     document.head.appendChild(s);
-    setTimeout(() => { delete window[cbName]; s.remove(); resolve({error:'timeout'}); }, 15000);
+    setTimeout(() => { if(window[cb]){ delete window[cb]; s.remove(); resolve({error:'timeout'}); }}, 20000);
   });
 }
 
