@@ -487,39 +487,72 @@ const API='https://script.google.com/macros/s/AKfycbzis2AzIxLkvVa5mIr1D5Q7YBXtIU
 
 // ── JSONP API ──
 function gasCall(params) {
-  return new Promise((resolve) => {
-    const cb = 'cb' + Date.now() + Math.floor(Math.random()*9999);
-    window[cb] = (data) => {
-      delete window[cb];
-      const el = document.getElementById(cb);
-      if(el) el.remove();
+  return new Promise((resolve, reject) => {
+    const cbName = '_cb' + Date.now() + Math.floor(Math.random()*99999);
+    let done = false;
+
+    window[cbName] = function(data) {
+      if(done) return;
+      done = true;
+      cleanup();
       resolve(data);
     };
+
+    function cleanup() {
+      delete window[cbName];
+      const el = document.getElementById(cbName);
+      if(el) el.remove();
+    }
+
     const url = new URL(API);
+    url.searchParams.set('callback', cbName);
     Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, String(v)));
-    url.searchParams.set('callback', cb);
     url.searchParams.set('t', Date.now());
-    const s = document.createElement('script');
-    s.id = cb;
-    s.src = url.toString();
-    s.onerror = () => { delete window[cb]; s.remove(); resolve({error:'fail'}); };
-    document.head.appendChild(s);
-    setTimeout(() => { if(window[cb]){ delete window[cb]; s.remove(); resolve({error:'timeout'}); }}, 20000);
+
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = url.toString();
+    script.onerror = function() {
+      if(done) return;
+      done = true;
+      cleanup();
+      resolve({error: 'script load failed'});
+    };
+
+    document.head.appendChild(script);
+
+    setTimeout(function() {
+      if(done) return;
+      done = true;
+      cleanup();
+      resolve({error: 'timeout'});
+    }, 30000);
   });
 }
 
 async function apiFetch(sheet) {
-  const r = await gasCall({sheet, action:'read'});
-  return Array.isArray(r) ? r : [];
+  try {
+    const r = await gasCall({sheet: sheet, action: 'read'});
+    return Array.isArray(r) ? r : [];
+  } catch(e) { return []; }
 }
+
 async function apiPost(sheet, row) {
-  return gasCall({sheet, action:'create', data: JSON.stringify(row)});
+  try {
+    return await gasCall({sheet: sheet, action: 'create', data: JSON.stringify(row)});
+  } catch(e) { return {error: e.message}; }
 }
+
 async function apiPatch(sheet, id, row) {
-  return gasCall({sheet, action:'update', id, data: JSON.stringify(row)});
+  try {
+    return await gasCall({sheet: sheet, action: 'update', id: id, data: JSON.stringify(row)});
+  } catch(e) { return {error: e.message}; }
 }
+
 async function apiDelete(sheet, id) {
-  return gasCall({sheet, action:'delete', id});
+  try {
+    return await gasCall({sheet: sheet, action: 'delete', id: id});
+  } catch(e) { return {error: e.message}; }
 }
 const SHEETS={orders:'orders',stock:'stock',inventory:'inventory',expenses:'expenses'};
 const MONTHS=['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
